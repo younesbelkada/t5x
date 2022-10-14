@@ -144,7 +144,7 @@ class HParamMap:
   def __init__(self, rules):
     self._rules = [(re.compile(r), p) for r, p in rules]
 
-  def __getitem__(self, key: str) -> Any:
+  def __getitem__(self, key):
     for r, p in self._rules:
       if r.search(key):
         return p

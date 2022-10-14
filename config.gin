@@ -1,0 +1,387 @@
+from __gin__ import dynamic_registration
+import __main__ as infer_script
+from flax import linen
+from flaxformer.architectures.moe import moe_architecture
+from flaxformer.architectures.moe import moe_enums
+from flaxformer.architectures.moe import moe_layers
+from flaxformer.architectures.moe import routing
+from flaxformer.architectures.t5 import t5_architecture
+from flaxformer.components.attention import dense_attention
+from flaxformer.components import dense
+from flaxformer.components import embedding
+from flaxformer.components import layer_norm
+from flaxformer.components import relative_position_biases
+from gin import config
+import seqio
+from t5.data import mixtures
+from t5x import adafactor
+from t5x.contrib.moe import adafactor_utils
+from t5x.contrib.moe import models
+from t5x.contrib.moe import partitioning
+from t5x import partitioning as partitioning2
+from t5x import utils
+
+# Macros:
+# ==============================================================================
+ACTIVATION_DTYPE = 'bfloat16'
+ACTIVATION_PARTITIONING_DIMS = 1
+ARCHITECTURE = @t5_architecture.EncoderDecoder()
+AUX_LOSS_FACTOR = 0.01
+BIAS_INIT = @bias_init/linen.initializers.normal()
+CHECKPOINT_PATH = '/home/younesbelkada/disk/moe/models/switch/checkpoint_500100'
+DECODER_SPARSE_LAYOUT = %flaxformer.architectures.moe.moe_enums.LayerLayout.MIXED
+DROPOUT_FACTORY = @dropout_factory/linen.Dropout
+DROPOUT_RATE = 0.0
+EMBED_DIM = 768
+ENCODER_SPARSE_LAYOUT = %flaxformer.architectures.moe.moe_enums.LayerLayout.MIXED
+EVAL_EXPERT_CAPACITY_FACTOR = 2.0
+EXPERT_DROPOUT_RATE = 0.0
+EXPERT_MLP_DIM = %MLP_DIM
+GROUP_SIZE = 8192
+HEAD_DIM = 64
+INFER_OUTPUT_DIR = './'
+JITTER_NOISE = 0.0
+LABEL_SMOOTHING = 0.0
+LOSS_NORMALIZING_FACTOR = 'NUM_REAL_TARGET_TOKENS'
+MIXTURE_OR_TASK_MODULE = None
+MIXTURE_OR_TASK_NAME = 'wmt_t2t_ende_v003'
+MLP_DIM = 3072
+MODEL = @models.MoeEncoderDecoderModel()
+MODEL_DIR = '~/disk'
+MODEL_PARALLEL_SUBMESH = None
+MOE_TRUNCATED_DTYPE = 'bfloat16'
+NUM_DECODER_LAYERS = 12
+NUM_DECODER_SPARSE_LAYERS = 6
+NUM_EMBEDDINGS = 32128
+NUM_ENCODER_LAYERS = 12
+NUM_ENCODER_SPARSE_LAYERS = 6
+NUM_EXPERTS = 8
+NUM_HEADS = 12
+NUM_MODEL_PARTITIONS = 1
+NUM_SELECTED_EXPERTS = 1
+OPTIMIZER = @adafactor.Adafactor()
+ROUTER_Z_LOSS_FACTOR = 0.0
+SCALE = 0.1
+TASK_FEATURE_LENGTHS = {'inputs': 64, 'targets': 64}
+TRAIN_EXPERT_CAPACITY_FACTOR = 1.25
+VOCABULARY = @seqio.SentencePieceVocabulary()
+Z_LOSS = 0.0001
+
+# Parameters for adafactor.Adafactor:
+# ==============================================================================
+adafactor.Adafactor.decay_rate = 0.8
+adafactor.Adafactor.logical_factor_rules = @adafactor_utils.logical_factor_rules()
+adafactor.Adafactor.step_offset = 0
+
+# Parameters for partitioning.compute_num_model_partitions:
+# ==============================================================================
+partitioning.compute_num_model_partitions.model_parallel_submesh = \
+    %MODEL_PARALLEL_SUBMESH
+partitioning.compute_num_model_partitions.num_model_partitions = \
+    %NUM_MODEL_PARTITIONS
+
+# Parameters for utils.DatasetConfig:
+# ==============================================================================
+utils.DatasetConfig.batch_size = 32
+utils.DatasetConfig.mixture_or_task_name = %MIXTURE_OR_TASK_NAME
+utils.DatasetConfig.module = %MIXTURE_OR_TASK_MODULE
+utils.DatasetConfig.pack = False
+utils.DatasetConfig.seed = 0
+utils.DatasetConfig.shuffle = False
+utils.DatasetConfig.split = 'test'
+utils.DatasetConfig.task_feature_lengths = %TASK_FEATURE_LENGTHS
+utils.DatasetConfig.use_cached = False
+
+# Parameters for t5_architecture.DecoderLayer:
+# ==============================================================================
+t5_architecture.DecoderLayer.activation_partitioning_dims = \
+    %ACTIVATION_PARTITIONING_DIMS
+t5_architecture.DecoderLayer.dropout_factory = %DROPOUT_FACTORY
+t5_architecture.DecoderLayer.encoder_decoder_attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+t5_architecture.DecoderLayer.layer_norm_factory = @layer_norm.T5LayerNorm
+t5_architecture.DecoderLayer.mlp = @dense.MlpBlock()
+t5_architecture.DecoderLayer.scanned = False
+t5_architecture.DecoderLayer.self_attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+
+# Parameters for output_logits/dense.DenseGeneral:
+# ==============================================================================
+output_logits/dense.DenseGeneral.bias_init = %BIAS_INIT
+output_logits/dense.DenseGeneral.dtype = 'float32'
+output_logits/dense.DenseGeneral.features = %NUM_EMBEDDINGS
+output_logits/dense.DenseGeneral.kernel_axis_names = ['embed', 'vocab']
+output_logits/dense.DenseGeneral.kernel_init = \
+    @output_logits_kernel_init/linen.initializers.variance_scaling()
+output_logits/dense.DenseGeneral.use_bias = False
+
+# Parameters for dropout_factory/linen.Dropout:
+# ==============================================================================
+dropout_factory/linen.Dropout.broadcast_dims = (-2,)
+dropout_factory/linen.Dropout.rate = %DROPOUT_RATE
+
+# Parameters for embedding.Embed:
+# ==============================================================================
+embedding.Embed.attend_dtype = 'float32'
+embedding.Embed.cast_input_dtype = 'int32'
+embedding.Embed.dtype = %ACTIVATION_DTYPE
+embedding.Embed.embedding_init = @token_embedder_init/linen.initializers.normal()
+embedding.Embed.features = %EMBED_DIM
+embedding.Embed.name = 'token_embedder'
+embedding.Embed.num_embeddings = %NUM_EMBEDDINGS
+embedding.Embed.one_hot = True
+
+# Parameters for t5_architecture.EncoderDecoder:
+# ==============================================================================
+t5_architecture.EncoderDecoder.decoder_factory = @moe_architecture.SparseDecoder
+t5_architecture.EncoderDecoder.dtype = %ACTIVATION_DTYPE
+t5_architecture.EncoderDecoder.encoder_factory = @moe_architecture.SparseEncoder
+t5_architecture.EncoderDecoder.shared_token_embedder_factory = @embedding.Embed
+
+# Parameters for t5_architecture.EncoderLayer:
+# ==============================================================================
+t5_architecture.EncoderLayer.activation_partitioning_dims = \
+    %ACTIVATION_PARTITIONING_DIMS
+t5_architecture.EncoderLayer.attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+t5_architecture.EncoderLayer.dropout_factory = %DROPOUT_FACTORY
+t5_architecture.EncoderLayer.layer_norm_factory = @layer_norm.T5LayerNorm
+t5_architecture.EncoderLayer.mlp = @dense.MlpBlock()
+t5_architecture.EncoderLayer.scanned = False
+
+# Parameters for infer_script.infer:
+# ==============================================================================
+infer_script.infer.checkpoint_period = 100
+infer_script.infer.dataset_cfg = @utils.DatasetConfig()
+infer_script.infer.mode = 'predict'
+infer_script.infer.model = %MODEL
+infer_script.infer.num_shards = 1
+infer_script.infer.output_dir = %INFER_OUTPUT_DIR
+infer_script.infer.partitioner = @partitioning2.PjitPartitioner()
+infer_script.infer.restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
+infer_script.infer.shard_id = 0
+
+# Parameters for dense.MlpBlock:
+# ==============================================================================
+dense.MlpBlock.activations = ('relu',)
+dense.MlpBlock.bias_init = %BIAS_INIT
+dense.MlpBlock.dtype = %ACTIVATION_DTYPE
+dense.MlpBlock.final_dropout_rate = 0
+dense.MlpBlock.intermediate_dim = %MLP_DIM
+dense.MlpBlock.intermediate_dropout_rate = %DROPOUT_RATE
+dense.MlpBlock.kernel_init = @mlp_kernel_init/linen.initializers.variance_scaling()
+dense.MlpBlock.use_bias = False
+
+# Parameters for expert/dense.MlpBlock:
+# ==============================================================================
+expert/dense.MlpBlock.activation_partitioning_dims = 1
+expert/dense.MlpBlock.activations = ('relu',)
+expert/dense.MlpBlock.bias_init = %BIAS_INIT
+expert/dense.MlpBlock.data_sharding_constraints = ('expert_replicas', 'mlp')
+expert/dense.MlpBlock.dtype = %MOE_TRUNCATED_DTYPE
+expert/dense.MlpBlock.final_dropout_rate = 0.0
+expert/dense.MlpBlock.input_axis_name = 'embed'
+expert/dense.MlpBlock.intermediate_axis_name = 'expert_mlp'
+expert/dense.MlpBlock.intermediate_dim = %EXPERT_MLP_DIM
+expert/dense.MlpBlock.intermediate_dropout_rate = %EXPERT_DROPOUT_RATE
+expert/dense.MlpBlock.kernel_init = \
+    @expert_kernel_init/linen.initializers.variance_scaling()
+expert/dense.MlpBlock.output_axis_name = 'embed'
+expert/dense.MlpBlock.use_bias = False
+
+# Parameters for models.MoeEncoderDecoderModel:
+# ==============================================================================
+models.MoeEncoderDecoderModel.aux_loss_factor = %AUX_LOSS_FACTOR
+models.MoeEncoderDecoderModel.input_vocabulary = %VOCABULARY
+models.MoeEncoderDecoderModel.label_smoothing = %LABEL_SMOOTHING
+models.MoeEncoderDecoderModel.loss_normalizing_factor = %LOSS_NORMALIZING_FACTOR
+models.MoeEncoderDecoderModel.module = %ARCHITECTURE
+models.MoeEncoderDecoderModel.optimizer_def = %OPTIMIZER
+models.MoeEncoderDecoderModel.output_vocabulary = %VOCABULARY
+models.MoeEncoderDecoderModel.router_z_loss_factor = %ROUTER_Z_LOSS_FACTOR
+models.MoeEncoderDecoderModel.z_loss = %Z_LOSS
+
+# Parameters for moe_layers.MoeLayer:
+# ==============================================================================
+moe_layers.MoeLayer.dtype = %MOE_TRUNCATED_DTYPE
+moe_layers.MoeLayer.eval_capacity_factor = %EVAL_EXPERT_CAPACITY_FACTOR
+moe_layers.MoeLayer.expert = @expert/dense.MlpBlock()
+moe_layers.MoeLayer.max_group_size = %GROUP_SIZE
+moe_layers.MoeLayer.num_experts = %NUM_EXPERTS
+moe_layers.MoeLayer.num_model_partitions = \
+    @partitioning.compute_num_model_partitions()
+moe_layers.MoeLayer.train_capacity_factor = %TRAIN_EXPERT_CAPACITY_FACTOR
+
+# Parameters for sparse_decoder/moe_layers.MoeLayer:
+# ==============================================================================
+sparse_decoder/moe_layers.MoeLayer.router = \
+    @sparse_decoder/routing.TokensChooseMaskedRouter()
+
+# Parameters for sparse_encoder/moe_layers.MoeLayer:
+# ==============================================================================
+sparse_encoder/moe_layers.MoeLayer.router = \
+    @sparse_encoder/routing.TokensChooseMaskedRouter()
+
+# Parameters for dense_attention.MultiHeadDotProductAttention:
+# ==============================================================================
+dense_attention.MultiHeadDotProductAttention.bias_init = %BIAS_INIT
+dense_attention.MultiHeadDotProductAttention.broadcast_dropout = True
+dense_attention.MultiHeadDotProductAttention.dropout_rate = %DROPOUT_RATE
+dense_attention.MultiHeadDotProductAttention.dtype = %ACTIVATION_DTYPE
+dense_attention.MultiHeadDotProductAttention.head_dim = %HEAD_DIM
+dense_attention.MultiHeadDotProductAttention.kernel_init = \
+    @attention_kernel_init/linen.initializers.variance_scaling()
+dense_attention.MultiHeadDotProductAttention.num_heads = %NUM_HEADS
+dense_attention.MultiHeadDotProductAttention.use_bias = False
+
+# Parameters for bias_init/linen.initializers.normal:
+# ==============================================================================
+bias_init/linen.initializers.normal.stddev = 1e-06
+
+# Parameters for router_init/linen.initializers.normal:
+# ==============================================================================
+router_init/linen.initializers.normal.stddev = 0.02
+
+# Parameters for token_embedder_init/linen.initializers.normal:
+# ==============================================================================
+token_embedder_init/linen.initializers.normal.stddev = 1.0
+
+# Parameters for partitioning2.PjitPartitioner:
+# ==============================================================================
+partitioning2.PjitPartitioner.logical_axis_rules = \
+    @partitioning2.standard_logical_axis_rules()
+partitioning2.PjitPartitioner.num_partitions = 1
+
+# Parameters for relative_position_biases.RelativePositionBiases:
+# ==============================================================================
+relative_position_biases.RelativePositionBiases.dtype = %ACTIVATION_DTYPE
+relative_position_biases.RelativePositionBiases.embedding_init = \
+    @relative_position_bias_init/linen.initializers.variance_scaling()
+relative_position_biases.RelativePositionBiases.max_distance = 128
+relative_position_biases.RelativePositionBiases.num_buckets = 32
+relative_position_biases.RelativePositionBiases.num_heads = %NUM_HEADS
+
+# Parameters for utils.RestoreCheckpointConfig:
+# ==============================================================================
+utils.RestoreCheckpointConfig.dtype = 'bfloat16'
+utils.RestoreCheckpointConfig.mode = 'specific'
+utils.RestoreCheckpointConfig.path = %CHECKPOINT_PATH
+
+# Parameters for routing.RouterWeights:
+# ==============================================================================
+routing.RouterWeights.bias_init = %BIAS_INIT
+routing.RouterWeights.dtype = %MOE_TRUNCATED_DTYPE
+routing.RouterWeights.kernel_init = @router_init/linen.initializers.normal()
+routing.RouterWeights.use_bias = False
+
+# Parameters for seqio.SentencePieceVocabulary:
+# ==============================================================================
+seqio.SentencePieceVocabulary.sentencepiece_model_file = \
+    'gs://t5-data/vocabs/cc_all.32000.100extra/sentencepiece.model'
+
+# Parameters for moe_architecture.SparseDecoder:
+# ==============================================================================
+moe_architecture.SparseDecoder.dropout_factory = %DROPOUT_FACTORY
+moe_architecture.SparseDecoder.dtype = %ACTIVATION_DTYPE
+moe_architecture.SparseDecoder.layer_factory = @t5_architecture.DecoderLayer
+moe_architecture.SparseDecoder.layer_norm_factory = @layer_norm.T5LayerNorm
+moe_architecture.SparseDecoder.num_layers = %NUM_DECODER_LAYERS
+moe_architecture.SparseDecoder.num_sparse_layers = %NUM_DECODER_SPARSE_LAYERS
+moe_architecture.SparseDecoder.output_logits_factory = None
+moe_architecture.SparseDecoder.shared_relative_position_bias_factory = \
+    @relative_position_biases.RelativePositionBiases
+moe_architecture.SparseDecoder.sparse_layer_factory = \
+    @moe_architecture.SparseDecoderLayer
+moe_architecture.SparseDecoder.sparse_layout = %DECODER_SPARSE_LAYOUT
+
+# Parameters for moe_architecture.SparseDecoderLayer:
+# ==============================================================================
+moe_architecture.SparseDecoderLayer.activation_partitioning_dims = \
+    %ACTIVATION_PARTITIONING_DIMS
+moe_architecture.SparseDecoderLayer.dropout_factory = %DROPOUT_FACTORY
+moe_architecture.SparseDecoderLayer.encoder_decoder_attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+moe_architecture.SparseDecoderLayer.layer_norm_factory = @layer_norm.T5LayerNorm
+moe_architecture.SparseDecoderLayer.mlp = @sparse_decoder/moe_layers.MoeLayer()
+moe_architecture.SparseDecoderLayer.scanned = False
+moe_architecture.SparseDecoderLayer.self_attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+
+# Parameters for moe_architecture.SparseEncoder:
+# ==============================================================================
+moe_architecture.SparseEncoder.dtype = %ACTIVATION_DTYPE
+moe_architecture.SparseEncoder.input_dropout_factory = %DROPOUT_FACTORY
+moe_architecture.SparseEncoder.layer_factory = @t5_architecture.EncoderLayer
+moe_architecture.SparseEncoder.layer_norm_factory = @layer_norm.T5LayerNorm
+moe_architecture.SparseEncoder.num_layers = %NUM_ENCODER_LAYERS
+moe_architecture.SparseEncoder.num_sparse_layers = %NUM_ENCODER_SPARSE_LAYERS
+moe_architecture.SparseEncoder.output_dropout_factory = %DROPOUT_FACTORY
+moe_architecture.SparseEncoder.shared_relative_position_bias_factory = \
+    @relative_position_biases.RelativePositionBiases
+moe_architecture.SparseEncoder.sparse_layer_factory = \
+    @moe_architecture.SparseEncoderLayer
+moe_architecture.SparseEncoder.sparse_layout = %ENCODER_SPARSE_LAYOUT
+
+# Parameters for moe_architecture.SparseEncoderLayer:
+# ==============================================================================
+moe_architecture.SparseEncoderLayer.activation_partitioning_dims = \
+    %ACTIVATION_PARTITIONING_DIMS
+moe_architecture.SparseEncoderLayer.attention = \
+    @dense_attention.MultiHeadDotProductAttention()
+moe_architecture.SparseEncoderLayer.dropout_factory = %DROPOUT_FACTORY
+moe_architecture.SparseEncoderLayer.layer_norm_factory = @layer_norm.T5LayerNorm
+moe_architecture.SparseEncoderLayer.mlp = @sparse_encoder/moe_layers.MoeLayer()
+moe_architecture.SparseEncoderLayer.scanned = False
+
+# Parameters for layer_norm.T5LayerNorm:
+# ==============================================================================
+layer_norm.T5LayerNorm.dtype = %ACTIVATION_DTYPE
+
+# Parameters for routing.TokensChooseMaskedRouter:
+# ==============================================================================
+routing.TokensChooseMaskedRouter.dtype = %MOE_TRUNCATED_DTYPE
+routing.TokensChooseMaskedRouter.ignore_padding_tokens = False
+routing.TokensChooseMaskedRouter.jitter_noise = %JITTER_NOISE
+routing.TokensChooseMaskedRouter.num_selected_experts = %NUM_SELECTED_EXPERTS
+routing.TokensChooseMaskedRouter.router_weights = @routing.RouterWeights()
+
+# Parameters for sparse_decoder/routing.TokensChooseMaskedRouter:
+# ==============================================================================
+sparse_decoder/routing.TokensChooseMaskedRouter.batch_prioritized_routing = False
+
+# Parameters for sparse_encoder/routing.TokensChooseMaskedRouter:
+# ==============================================================================
+sparse_encoder/routing.TokensChooseMaskedRouter.batch_prioritized_routing = False
+
+# Parameters for attention_kernel_init/linen.initializers.variance_scaling:
+# ==============================================================================
+attention_kernel_init/linen.initializers.variance_scaling.distribution = 'normal'
+attention_kernel_init/linen.initializers.variance_scaling.mode = 'fan_in'
+attention_kernel_init/linen.initializers.variance_scaling.scale = %SCALE
+
+# Parameters for expert_kernel_init/linen.initializers.variance_scaling:
+# ==============================================================================
+expert_kernel_init/linen.initializers.variance_scaling.distribution = 'normal'
+expert_kernel_init/linen.initializers.variance_scaling.mode = 'fan_in'
+expert_kernel_init/linen.initializers.variance_scaling.scale = %SCALE
+
+# Parameters for mlp_kernel_init/linen.initializers.variance_scaling:
+# ==============================================================================
+mlp_kernel_init/linen.initializers.variance_scaling.distribution = \
+    'truncated_normal'
+mlp_kernel_init/linen.initializers.variance_scaling.mode = 'fan_in'
+mlp_kernel_init/linen.initializers.variance_scaling.scale = %SCALE
+
+# Parameters for output_logits_kernel_init/linen.initializers.variance_scaling:
+# ==============================================================================
+output_logits_kernel_init/linen.initializers.variance_scaling.distribution = \
+    'truncated_normal'
+output_logits_kernel_init/linen.initializers.variance_scaling.mode = 'fan_in'
+output_logits_kernel_init/linen.initializers.variance_scaling.scale = %SCALE
+
+# Parameters for relative_position_bias_init/linen.initializers.variance_scaling:
+# ==============================================================================
+relative_position_bias_init/linen.initializers.variance_scaling.distribution = \
+    'uniform'
+relative_position_bias_init/linen.initializers.variance_scaling.mode = 'fan_avg'
+relative_position_bias_init/linen.initializers.variance_scaling.scale = %SCALE

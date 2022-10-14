@@ -1181,7 +1181,9 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       # [B, ...] -> [B * shard_count, ...]
       # partitioned_infer_step executes infer_step on sharded batched data, and
       # returns de-sharded batched indices and result replicated on all hosts.
-      batch_indices, batch_result = partitioned_infer_step(
+      # batch_indices, batch_result = partitioned_infer_step(
+      #     train_state.params, infer_batch, step_rng, index)
+      batch_indices, batch_result = infer_step_with_indices(
           train_state.params, infer_batch, step_rng, index)
       logging.info('Inference of batch %s done.', index)
 
@@ -1203,6 +1205,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
 
       batched_results.append(batch_result)
       all_indices.append(batch_indices)
+      # break
 
     logging.info('Inference of all batches done.')
     all_inferences = batched_results
@@ -1305,6 +1308,7 @@ def get_vocabulary(
         DeprecationWarning)
     import_module(cfg.module)
 
+  
   provider = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
   features = provider.output_features
 

@@ -24,6 +24,8 @@ from absl import logging
 
 from flax.core import frozen_dict
 import flax.traverse_util
+from flax import traverse_util as traverse_util
+from flax.serialization import to_bytes
 import jax
 from jax.experimental import jax2tf  # type: ignore[import]
 from jax.experimental.global_device_array import GlobalDeviceArray as GDA
@@ -48,6 +50,11 @@ WarmupExamples = List[Union[Union[str, bytes], List[int]]]
 PostprocessorFn = Callable[[Tuple[Any, Any]], Union[Tuple[Any, Any],
                                                     Mapping[str, Any]]]
 
+import jax
+# from jax.config import config
+# config.update("jax_disable_jit", True)
+
+jax.config.update('jax_platform_name', 'cpu')
 
 class CreatePreprocessorFnNew(typing_extensions.Protocol):
 
@@ -923,17 +930,22 @@ def save(
   head, tail = os.path.split(output_dir)
   export_dir_cpu = os.path.join(head + '_cpu', tail)
   # TODO(b/196260374): Figure out how to set experimental_custom_gradients=True.
-  options = tf.saved_model.SaveOptions(
-      experimental_custom_gradients=False,
-      function_aliases={
-          'tpu_func': module.tpu_func,
-      })
-  tf.saved_model.save(
-      module,
-      export_dir_cpu,
-      signatures=signatures,
-      options=options,
-  )
+  # options = tf.saved_model.SaveOptions(
+  #     experimental_custom_gradients=False,
+  #     # function_aliases={
+  #     #     'tpu_func': module.tpu_func,
+  #     # }
+  #     experimental_io_device="/job:localhost",
+  #   )
+  # tf.saved_model.save(
+  #     module,
+  #     export_dir_cpu,
+  #     options=options
+  # )
+
+  with open(os.path.join(export_dir_cpu, f"flax_params.flax"), "wb") as f:
+    model_bytes = to_bytes(params)
+    f.write(model_bytes)
 
 
 

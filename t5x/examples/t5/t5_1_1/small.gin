@@ -3,6 +3,8 @@
 include 't5x/examples/t5/t5_1_1/base.gin'  # imports vocab, optimizer and model.
 
 # ------------------- Network specification overrides --------------------------
+DROPOUT_RATE = 0.1
+
 network.Transformer.config = @network.T5Config()
 network.T5Config:
   emb_dim = 512
@@ -11,3 +13,4 @@ network.T5Config:
   num_decoder_layers = 8
   head_dim = 64
   mlp_dim = 1024
+  

@@ -48,6 +48,12 @@ import tensorflow as tf
 from tensorflow.io import gfile
 from typing_extensions import Protocol
 
+import jax
+# from jax.config import config
+# config.update("jax_disable_jit", True)
+
+jax.config.update('jax_platform_name', 'cpu')
+
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -25,7 +25,7 @@
 # - RestoreCheckpointConfig.mode
 # - PjitPartitioner.num_partitions
 from __gin__ import dynamic_registration
-import seqio
+
 import __main__ as infer_script
 from t5x import partitioning
 from t5x import utils
